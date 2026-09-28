@@ -15,17 +15,39 @@ le dépôt est privé.
   Claude-Code-Usage-Monitor, les limites assumées.
 - [`docs/plan-mvp.md`](docs/plan-mvp.md) — le plan en phases (0 à 6), avec
   le critère de fin de chaque phase.
+- [`docs/phase0-verifications.md`](docs/phase0-verifications.md) — constat
+  réel sur le format JSONL, l'automatisation de `/usage`, et la remise à
+  zéro hebdomadaire. Fait autorité sur ces points, jusqu'à date de
+  péremption (voir avertissement dans le fichier).
+- [`docs/phase1-ingestion.md`](docs/phase1-ingestion.md) — décisions de
+  l'ingestion (schéma, dédoublonnage, `node:sqlite`) et vérification des
+  totaux contre `ccusage`.
 
-Ces deux fichiers font autorité sur le périmètre et l'ordre de travail. Ne
-pas sauter la phase 0 (vérifications sur le format réel des données) avant
+Ces fichiers font autorité sur le périmètre et l'ordre de travail. Ne pas
+sauter la phase 0 (vérifications sur le format réel des données) avant
 d'écrire du code d'ingestion : les hypothèses du cadrage sont à confirmer
 sur la machine réelle, pas à supposer.
 
 ## État du projet
 
-Cadrage posé, aucun code écrit. Prochaine étape : phase 0 du plan
-(vérifications sur le format JSONL, sur l'automatisation de `/usage`, sur
-l'heure de remise à zéro hebdomadaire).
+Phase 0 (vérifications) et phase 1 (ingestion) faites le 2026-09-28.
+
+- Phase 0 — voir `docs/phase0-verifications.md`. Constats clés : format
+  JSONL stable (usage détaillé par entrée `assistant`, y compris cache
+  1h/5m), sous-agents dans `subagents/*.jsonl` à inclure, `cwd` comme clé
+  de projet, `message.id` comme clé de déduplication. `/usage` fonctionne
+  hors interactif via `claude -p "/usage"` et donne aussi la date/heure
+  exacte de remise à zéro — les relevés de jauge (phase 2) sont donc
+  automatisables dès le départ, pas seulement manuels.
+- Phase 1 — voir `docs/phase1-ingestion.md`. Commande `tokenmeter ingest`
+  fonctionnelle, lecture incrémentale, stockage SQLite via `node:sqlite`
+  (pas de dépendance native à compiler) dans `~/.tokenmeter/tokenmeter.db`.
+  Totaux vérifiés à moins de 1 % de `ccusage` sur l'historique complet de
+  la machine.
+
+Prochaine étape : phase 2 (relevés de jauge), avec la commande `read` et,
+vu le constat de la phase 0, une automatisation possible via
+`claude -p "/usage"`.
 
 ## Conventions
 
