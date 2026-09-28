@@ -40,5 +40,25 @@ function migrate(db: DatabaseSync): void {
       bytes_read INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS readings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      weekly_pct REAL NOT NULL,
+      session_pct REAL,
+      dirty INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'manual'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_readings_timestamp ON readings (timestamp);
+
+    CREATE TABLE IF NOT EXISTS resets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      window TEXT NOT NULL,
+      reset_label TEXT NOT NULL,
+      reset_at TEXT,
+      observed_at TEXT NOT NULL,
+      UNIQUE (window, reset_label)
+    );
   `);
 }
