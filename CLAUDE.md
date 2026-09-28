@@ -4,8 +4,10 @@ Pilote local d'usage Claude : suivre le rythme de consommation par rapport
 aux fenêtres du forfait, estimer la taille réelle du quota hebdomadaire par
 calibration, et voir pour quels projets on consomme.
 
-Projet destiné à une publication open source (phase 6 du plan). D'ici là,
-le dépôt est privé.
+MVP terminé (phases 0 à 6 du plan). Licence MIT. Le dépôt reste privé pour
+l'instant — le rendre public sur GitHub (ou équivalent) et publier sur npm
+sont des décisions distinctes, pas encore prises (voir
+`docs/phase6-publication.md`).
 
 ## À lire avant de coder
 
@@ -34,6 +36,9 @@ le dépôt est privé.
 - [`docs/phase5-statusline.md`](docs/phase5-statusline.md) — commande
   `statusline`, format JSON reçu de Claude Code sur stdin, configuration
   `settings.json`.
+- [`docs/phase6-publication.md`](docs/phase6-publication.md) — licence,
+  commande `export`, ce qui reste un choix de l'utilisateur (visibilité du
+  dépôt, publication npm).
 
 Ces fichiers font autorité sur le périmètre et l'ordre de travail. Ne pas
 sauter la phase 0 (vérifications sur le format réel des données) avant
@@ -42,7 +47,7 @@ sur la machine réelle, pas à supposer.
 
 ## État du projet
 
-Phases 0 à 5 faites le 2026-09-28.
+Phases 0 à 6 faites le 2026-09-28 — MVP complet selon `docs/plan-mvp.md`.
 
 - Phase 0 — voir `docs/phase0-verifications.md`. Constats clés : format
   JSONL stable (usage détaillé par entrée `assistant`, y compris cache
@@ -88,8 +93,19 @@ Phases 0 à 5 faites le 2026-09-28.
   `computePace`, imprime `hebdo 62 % · semaine 55 % · +7 pts · projet X`.
   Se configure via `statusLine.command` dans `settings.json`.
 
-Prochaine étape : phase 6 (publication open source) — README avec section
-méthodologie, commande `export` anonymisée, choix de licence.
+- Phase 6 — voir `docs/phase6-publication.md`. Licence MIT choisie par
+  l'utilisateur (`LICENSE`, `package.json`). README réécrit avec une
+  section Méthodologie. Commande `tokenmeter export [--out <fichier>]` :
+  exporte la table `calibrations`, anonyme par construction (ni chemin de
+  projet, ni modèle, ni tokens bruts). `package.json` garde `"private":
+  true` — publier sur npm et rendre le dépôt public restent des décisions
+  de l'utilisateur, pas prises ici.
+
+Le MVP (phases 0 à 6) est couvert. Ce qui reste, au-delà : accumuler des
+relevés réels sur plusieurs semaines pour une première calibration en
+conditions réelles, étape B de la calibration (régression) si l'étape A
+montre un biais, et les deux décisions de publication ci-dessus quand
+l'utilisateur voudra les prendre.
 
 ## Conventions
 
