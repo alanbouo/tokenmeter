@@ -28,6 +28,9 @@ le dépôt est privé.
 - [`docs/phase3-calibration.md`](docs/phase3-calibration.md) — méthode de
   calibration (étape A), table de prix par modèle et sa source, limites
   assumées.
+- [`docs/phase4-rythme.md`](docs/phase4-rythme.md) — `pace` et
+  `by-project`, dégradation gracieuse quand relevés/calibration/remises à
+  zéro manquent.
 
 Ces fichiers font autorité sur le périmètre et l'ordre de travail. Ne pas
 sauter la phase 0 (vérifications sur le format réel des données) avant
@@ -36,7 +39,7 @@ sur la machine réelle, pas à supposer.
 
 ## État du projet
 
-Phases 0 à 3 faites le 2026-09-28.
+Phases 0 à 4 faites le 2026-09-28.
 
 - Phase 0 — voir `docs/phase0-verifications.md`. Constats clés : format
   JSONL stable (usage détaillé par entrée `assistant`, y compris cache
@@ -67,9 +70,17 @@ Phases 0 à 3 faites le 2026-09-28.
   de relevés réels sur cette machine pour une estimation en conditions
   réelles (il faut un second relevé propre dans la même semaine).
 
-Prochaine étape : phase 4 (rythme et projection) — comparer pourcentage
-consommé à pourcentage de semaine écoulé, projeter la fin de semaine, et
-répartir par projet (`by-project`).
+- Phase 4 — voir `docs/phase4-rythme.md`. Commande `tokenmeter pace`
+  (usage estimé en continu via la dernière calibration, écoulement de
+  semaine, projection linéaire de fin de semaine) et `tokenmeter
+  by-project` (répartition du coût équivalent par projet). Dégradation
+  gracieuse à chaque donnée manquante (pas de relevé, pas de calibration,
+  pas de remise à zéro observée) plutôt que d'échouer. `pricing.ts` retombe
+  désormais sur l'ID sans suffixe de date (`-YYYYMMDD`) pour les variantes
+  datées non listées explicitement.
+
+Prochaine étape : phase 5 (statusline) — ligne compacte dans Claude Code,
+en réutilisant `computePace`/`byProject`.
 
 ## Conventions
 
