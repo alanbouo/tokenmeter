@@ -1,6 +1,9 @@
+import { calibrate } from "./calibration.js";
 import { defaultDbPath, openDb } from "./db.js";
 import { ingest } from "./ingest.js";
 import { insertReading, syncFromCli } from "./readings.js";
+
+const DEFAULT_MIN_DELTA_PCT = 1;
 
 function runIngest(): void {
   const dbPath = defaultDbPath();
@@ -87,6 +90,56 @@ function runSync(): void {
   }
 }
 
+function runCalibrate(args: string[]): void {
+  let minDeltaPct = DEFAULT_MIN_DELTA_PCT;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--min-delta") {
+      const value = args[++i];
+      if (!value) throw new Error("--min-delta requires a percentage value.");
+      minDeltaPct = parsePct(value, "--min-delta");
+    } else {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+  }
+
+  const db = openDb();
+  try {
+    const result = calibrate(db, { minDeltaPct });
+
+    if (result.estimatedStockUsd === null) {
+      console.log(
+        `No usable interval yet (${result.intervalsConsidered} interval(s) considered, 0 usable).`
+      );
+      console.log(
+        "Need at least two non-dirty readings in the same week, separated by a visible gauge " +
+          `increase (>= ${minDeltaPct} point(s)), with ingested events in between.`
+      );
+      return;
+    }
+
+    const marginPct = result.dispersionUsd !== null ? (result.dispersionUsd / result.estimatedStockUsd) * 100 : null;
+    console.log(
+      `Estimated weekly stock: ~$${result.estimatedStockUsd.toFixed(2)} in equivalent-cost units (API price ratios).`
+    );
+    if (result.dispersionUsd !== null && marginPct !== null) {
+      console.log(`Margin (median absolute deviation): ~$${result.dispersionUsd.toFixed(2)} (~${marginPct.toFixed(0)}%).`);
+    }
+    console.log(`Intervals used: ${result.intervalsUsed} / ${result.intervalsConsidered} considered.`);
+    if (result.unknownModelEventCount > 0) {
+      console.log(
+        `Note: ${result.unknownModelEventCount} event(s) used a model with no known price and were excluded from the cost.`
+      );
+    }
+    console.log(`Calibrated at: ${result.computedAt}`);
+    console.log(
+      "This is an estimate from API price ratios, not an official Anthropic value — see docs/phase3-calibration.md."
+    );
+  } finally {
+    db.close();
+  }
+}
+
 function main(): void {
   const [, , command, ...args] = process.argv;
 
@@ -101,6 +154,9 @@ function main(): void {
       case "sync":
         runSync();
         break;
+      case "calibrate":
+        runCalibrate(args);
+        break;
       default:
         console.log("tokenmeter — local pace tracker for Claude subscription usage");
         console.log("");
@@ -112,6 +168,8 @@ function main(): void {
         console.log("    --session <pct>              Also record the 5h session percentage");
         console.log("    --dirty                      Flag claude.ai usage since the last reading");
         console.log('  sync                         Record a reading automatically via `claude -p "/usage"`');
+        console.log("  calibrate [options]          Estimate the weekly stock from readings and ingested tokens");
+        console.log(`    --min-delta <pct>            Ignore intervals with a smaller gauge increase (default ${DEFAULT_MIN_DELTA_PCT})`);
         if (command !== undefined) {
           process.exitCode = 1;
         }

@@ -60,5 +60,13 @@ function migrate(db: DatabaseSync): void {
       observed_at TEXT NOT NULL,
       UNIQUE (window, reset_label)
     );
+
+    CREATE TABLE IF NOT EXISTS calibrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      computed_at TEXT NOT NULL,
+      estimated_stock_usd REAL,
+      dispersion_usd REAL,
+      intervals_used INTEGER NOT NULL
+    );
   `);
 }
