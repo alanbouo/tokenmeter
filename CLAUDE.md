@@ -25,6 +25,9 @@ le dépôt est privé.
 - [`docs/phase2-releves.md`](docs/phase2-releves.md) — relevés manuels et
   automatiques (`read`/`sync`), limites du parsing de `/usage` et de la
   détection de remise à zéro.
+- [`docs/phase3-calibration.md`](docs/phase3-calibration.md) — méthode de
+  calibration (étape A), table de prix par modèle et sa source, limites
+  assumées.
 
 Ces fichiers font autorité sur le périmètre et l'ordre de travail. Ne pas
 sauter la phase 0 (vérifications sur le format réel des données) avant
@@ -33,7 +36,7 @@ sur la machine réelle, pas à supposer.
 
 ## État du projet
 
-Phases 0, 1 et 2 faites le 2026-09-28.
+Phases 0 à 3 faites le 2026-09-28.
 
 - Phase 0 — voir `docs/phase0-verifications.md`. Constats clés : format
   JSONL stable (usage détaillé par entrée `assistant`, y compris cache
@@ -54,9 +57,19 @@ Phases 0, 1 et 2 faites le 2026-09-28.
   `/usage` est volontairement tolérant (texte en langage naturel, pas un
   format stable).
 
-Prochaine étape : phase 3 (calibration), le cœur du projet — estimer le
-stock hebdomadaire à partir des tokens ingérés et de la hausse de jauge
-observée entre deux relevés propres.
+- Phase 3 — voir `docs/phase3-calibration.md`. Commande `tokenmeter
+  calibrate [--min-delta <pct>]` : estime le stock hebdomadaire en dollars
+  équivalent-API (`src/pricing.ts`, prix vérifiés sur la doc officielle le
+  2026-09-28) à partir des tokens ingérés et de la hausse de jauge entre
+  deux relevés propres (exclut `dirty`, les remises à zéro, et les
+  hausses trop faibles). Médiane + déviation absolue médiane sur les
+  intervalles. Logique testée sur données synthétiques ; pas encore assez
+  de relevés réels sur cette machine pour une estimation en conditions
+  réelles (il faut un second relevé propre dans la même semaine).
+
+Prochaine étape : phase 4 (rythme et projection) — comparer pourcentage
+consommé à pourcentage de semaine écoulé, projeter la fin de semaine, et
+répartir par projet (`by-project`).
 
 ## Conventions
 
