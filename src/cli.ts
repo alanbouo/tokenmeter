@@ -1,6 +1,7 @@
 import { calibrate } from "./calibration.js";
 import { defaultDbPath, openDb } from "./db.js";
 import { ingest } from "./ingest.js";
+import { byProject, computePace } from "./pace.js";
 import { insertReading, syncFromCli } from "./readings.js";
 
 const DEFAULT_MIN_DELTA_PCT = 1;
@@ -140,6 +141,96 @@ function runCalibrate(args: string[]): void {
   }
 }
 
+function runPace(): void {
+  const db = openDb();
+  try {
+    const result = computePace(db);
+
+    if (!result.lastReading) {
+      console.log("No reading yet. Run `tokenmeter read <pct>` or `tokenmeter sync` first.");
+      return;
+    }
+
+    console.log(`Last reading: ${result.lastReading.weeklyPct}% at ${result.lastReading.timestamp}`);
+
+    if (result.estimatedCurrentPct !== null) {
+      const label =
+        result.calibrationStockUsd !== null
+          ? "Estimated current usage"
+          : "Current usage (no calibration yet, same as last reading)";
+      console.log(`${label}: ~${result.estimatedCurrentPct.toFixed(1)}%`);
+    }
+
+    if (result.weekStart === null || result.weekEnd === null) {
+      console.log(
+        "Week boundaries unknown (no weekly reset observed yet via `tokenmeter sync`) — can't compute elapsed pace or a projection."
+      );
+    } else if (result.elapsedWeekPct !== null && result.estimatedCurrentPct !== null) {
+      console.log(`Week: ${result.weekStart} -> ${result.weekEnd}`);
+      console.log(`Elapsed: ~${result.elapsedWeekPct.toFixed(1)}% of the week.`);
+      const diff = result.estimatedCurrentPct - result.elapsedWeekPct;
+      console.log(
+        diff >= 0
+          ? `Ahead of pace by ~${diff.toFixed(1)} point(s) — consuming faster than time is passing.`
+          : `Behind pace by ~${Math.abs(diff).toFixed(1)} point(s) — consuming slower than time is passing.`
+      );
+      if (result.overrunDate) {
+        console.log(`At the current rate, you'd hit 100% around ${result.overrunDate}.`);
+      } else if (result.lostPointsAtCurrentRate !== null && result.projectedEndPct !== null) {
+        console.log(
+          `At the current rate, you'd end the week at ~${result.projectedEndPct.toFixed(1)}% — ` +
+            `~${result.lostPointsAtCurrentRate.toFixed(1)} point(s) of stock going unused.`
+        );
+      }
+    }
+
+    if (result.unknownModelEventCount > 0) {
+      console.log(
+        `Note: ${result.unknownModelEventCount} event(s) used a model with no known price and were excluded.`
+      );
+    }
+    console.log("Estimate, not an official Anthropic value — see docs/phase4-rythme.md.");
+  } finally {
+    db.close();
+  }
+}
+
+function runByProject(): void {
+  const db = openDb();
+  try {
+    const result = byProject(db);
+
+    if (result.entries.length === 0) {
+      console.log("No events found for the current week window.");
+      return;
+    }
+
+    console.log(
+      result.weekStart !== null
+        ? `Since week start: ${result.weekStart}`
+        : "Week start unknown (no weekly reset observed yet) — showing all ingested history instead of just this week."
+    );
+
+    for (const entry of result.entries) {
+      const pctStr = entry.pctOfStock !== null ? ` (~${entry.pctOfStock.toFixed(1)}% of estimated stock)` : "";
+      console.log(`  ${entry.project}: $${entry.costUsd.toFixed(2)}${pctStr}`);
+    }
+
+    if (result.stockUsd === null) {
+      console.log(
+        "No calibration available yet — showing equivalent-cost dollars only. Run `tokenmeter calibrate` once you have enough readings to see percentages of stock."
+      );
+    }
+    if (result.unknownModelEventCount > 0) {
+      console.log(
+        `Note: ${result.unknownModelEventCount} event(s) used a model with no known price and were excluded.`
+      );
+    }
+  } finally {
+    db.close();
+  }
+}
+
 function main(): void {
   const [, , command, ...args] = process.argv;
 
@@ -157,6 +248,12 @@ function main(): void {
       case "calibrate":
         runCalibrate(args);
         break;
+      case "pace":
+        runPace();
+        break;
+      case "by-project":
+        runByProject();
+        break;
       default:
         console.log("tokenmeter — local pace tracker for Claude subscription usage");
         console.log("");
@@ -170,6 +267,8 @@ function main(): void {
         console.log('  sync                         Record a reading automatically via `claude -p "/usage"`');
         console.log("  calibrate [options]          Estimate the weekly stock from readings and ingested tokens");
         console.log(`    --min-delta <pct>            Ignore intervals with a smaller gauge increase (default ${DEFAULT_MIN_DELTA_PCT})`);
+        console.log("  pace                         Compare consumption to elapsed time and project the week's end");
+        console.log("  by-project                   Break down this week's equivalent-cost by project");
         if (command !== undefined) {
           process.exitCode = 1;
         }

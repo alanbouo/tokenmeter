@@ -34,10 +34,15 @@ export interface ModelPrices {
   cacheRead: number;
 }
 
+// Strips a trailing dated-snapshot suffix (e.g. "claude-haiku-4-5-20251001"
+// -> "claude-haiku-4-5") so dated model IDs price the same as the bare ID,
+// without hardcoding every date variant Claude Code's local logs may record.
+const DATED_SUFFIX = /-\d{8}$/;
+
 // Returns per-token (not per-million-token) prices, or null for a model
 // this table doesn't recognize yet.
 export function pricesFor(model: string): ModelPrices | null {
-  const p = PER_MTOK[model];
+  const p = PER_MTOK[model] ?? PER_MTOK[model.replace(DATED_SUFFIX, "")];
   if (!p) return null;
   return {
     input: p.input / MTOK,
