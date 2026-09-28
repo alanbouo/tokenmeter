@@ -1,8 +1,11 @@
+import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { calibrate } from "./calibration.js";
 import { defaultDbPath, openDb } from "./db.js";
 import { ingest } from "./ingest.js";
 import { byProject, computePace } from "./pace.js";
 import { insertReading, syncFromCli } from "./readings.js";
+import { formatStatusline } from "./statusline.js";
 
 const DEFAULT_MIN_DELTA_PCT = 1;
 
@@ -231,6 +234,40 @@ function runByProject(): void {
   }
 }
 
+// Reads Claude Code's statusLine JSON payload from stdin, if any. Returns
+// "" when stdin is empty, not piped, or unparseable — the statusline still
+// works without a project label in that case.
+function readStdin(): string {
+  try {
+    return readFileSync(0, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function runStatusline(): void {
+  const db = openDb();
+  try {
+    const pace = computePace(db);
+
+    let projectLabel: string | null = null;
+    const raw = readStdin().trim();
+    if (raw) {
+      try {
+        const payload = JSON.parse(raw) as { cwd?: unknown; workspace?: { current_dir?: unknown } };
+        const cwd = payload.cwd ?? payload.workspace?.current_dir;
+        if (typeof cwd === "string" && cwd.length > 0) projectLabel = basename(cwd);
+      } catch {
+        // Malformed or absent stdin — fine, the line just won't name a project.
+      }
+    }
+
+    console.log(formatStatusline(pace, projectLabel));
+  } finally {
+    db.close();
+  }
+}
+
 function main(): void {
   const [, , command, ...args] = process.argv;
 
@@ -254,6 +291,9 @@ function main(): void {
       case "by-project":
         runByProject();
         break;
+      case "statusline":
+        runStatusline();
+        break;
       default:
         console.log("tokenmeter — local pace tracker for Claude subscription usage");
         console.log("");
@@ -269,6 +309,7 @@ function main(): void {
         console.log(`    --min-delta <pct>            Ignore intervals with a smaller gauge increase (default ${DEFAULT_MIN_DELTA_PCT})`);
         console.log("  pace                         Compare consumption to elapsed time and project the week's end");
         console.log("  by-project                   Break down this week's equivalent-cost by project");
+        console.log("  statusline                   Print a compact line for Claude Code's statusLine hook");
         if (command !== undefined) {
           process.exitCode = 1;
         }
