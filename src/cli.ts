@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import { calibrate } from "./calibration.js";
 import { defaultDbPath, openDb } from "./db.js";
+import { exportCalibrations } from "./export.js";
 import { ingest } from "./ingest.js";
 import { byProject, computePace } from "./pace.js";
 import { insertReading, syncFromCli } from "./readings.js";
@@ -268,6 +269,34 @@ function runStatusline(): void {
   }
 }
 
+function runExport(args: string[]): void {
+  let outPath: string | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--out") {
+      const value = args[++i];
+      if (!value) throw new Error("--out requires a file path.");
+      outPath = value;
+    } else {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+  }
+
+  const db = openDb();
+  try {
+    const reports = exportCalibrations(db);
+    const json = JSON.stringify(reports, null, 2);
+    if (outPath) {
+      writeFileSync(outPath, json + "\n");
+      console.log(`Wrote ${reports.length} calibration report(s) to ${outPath}.`);
+    } else {
+      console.log(json);
+    }
+  } finally {
+    db.close();
+  }
+}
+
 function main(): void {
   const [, , command, ...args] = process.argv;
 
@@ -294,6 +323,9 @@ function main(): void {
       case "statusline":
         runStatusline();
         break;
+      case "export":
+        runExport(args);
+        break;
       default:
         console.log("tokenmeter — local pace tracker for Claude subscription usage");
         console.log("");
@@ -310,6 +342,8 @@ function main(): void {
         console.log("  pace                         Compare consumption to elapsed time and project the week's end");
         console.log("  by-project                   Break down this week's equivalent-cost by project");
         console.log("  statusline                   Print a compact line for Claude Code's statusLine hook");
+        console.log("  export [options]             Export anonymized calibration reports as JSON");
+        console.log("    --out <file>                 Write to a file instead of stdout");
         if (command !== undefined) {
           process.exitCode = 1;
         }

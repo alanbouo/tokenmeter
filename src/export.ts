@@ -1,0 +1,35 @@
+import type { DatabaseSync } from "node:sqlite";
+
+// A calibration report is already anonymous by construction: the
+// `calibrations` table never stores project paths, models, or raw token
+// counts — only the aggregate estimate. Exporting it as-is satisfies
+// plan-mvp.md phase 6 ("export des rapports de calibration, anonymisés")
+// without needing to strip anything.
+export interface CalibrationReport {
+  computedAt: string;
+  estimatedStockUsd: number | null;
+  dispersionUsd: number | null;
+  intervalsUsed: number;
+}
+
+interface CalibrationRow {
+  computed_at: string;
+  estimated_stock_usd: number | null;
+  dispersion_usd: number | null;
+  intervals_used: number;
+}
+
+export function exportCalibrations(db: DatabaseSync): CalibrationReport[] {
+  const rows = db
+    .prepare(
+      "SELECT computed_at, estimated_stock_usd, dispersion_usd, intervals_used FROM calibrations ORDER BY computed_at ASC"
+    )
+    .all() as unknown as CalibrationRow[];
+
+  return rows.map((row) => ({
+    computedAt: row.computed_at,
+    estimatedStockUsd: row.estimated_stock_usd,
+    dispersionUsd: row.dispersion_usd,
+    intervalsUsed: row.intervals_used,
+  }));
+}
