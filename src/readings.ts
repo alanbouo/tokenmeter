@@ -54,6 +54,13 @@ export function syncFromCli(db: DatabaseSync): SyncResult {
   const parsed = parseUsageOutput(output);
 
   if (parsed.weeklyPct === null) {
+    if (/Total cost:/i.test(output)) {
+      throw new Error(
+        "`claude -p \"/usage\"` returned API-style cost output instead of subscription usage. " +
+          "Claude Code is probably not authenticated with your subscription in this environment " +
+          "(e.g. cron has no keychain access) — run sync from a login session or a launchd agent."
+      );
+    }
     throw new Error(
       "Could not find the weekly usage percentage in `claude -p \"/usage\"` output. " +
         "The wording may have changed — see docs/phase0-verifications.md."
