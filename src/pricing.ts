@@ -1,7 +1,7 @@
 // API price ratios used as the starting hypothesis for calibration (see
 // docs/plan-mvp.md phase 3, step A). These are Anthropic's published
 // first-party API prices, fetched from
-// https://platform.claude.com/docs/en/about-claude/pricing on 2026-09-28 —
+// https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-04 —
 // NOT what the subscription plan actually charges internally. The whole
 // point of calibration is to check whether this hypothesis holds; treat it
 // as a starting weighting, not a fact about the weekly cap. Re-verify this
@@ -17,6 +17,7 @@ interface PerMTokPrices {
 }
 
 const PER_MTOK: Record<string, PerMTokPrices> = {
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.2 },
   "claude-sonnet-5": { input: 2, output: 10, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.2 },
   "claude-opus-5-5": { input: 4, output: 20, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2 },
   "claude-opus-5": { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 },
