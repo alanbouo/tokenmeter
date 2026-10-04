@@ -54,3 +54,22 @@ semaine, estimer le stock hebdomadaire en unités équivalent-coût à partir
 des tokens ingérés (`events`) et de la hausse de jauge observée
 (`readings`), en excluant les intervalles `dirty` ou traversant une remise
 à zéro (`resets`).
+
+## Usage multi-machines (VPS)
+
+Le quota est lié au compte, pas à la machine : l'usage de Claude sur un VPS
+fait monter la jauge sans que ses tokens soient ingérés, ce qui biaise la
+calibration (stock sous-estimé) et `pace`. `tokenmeter ingest` accepte donc
+des répertoires sources supplémentaires :
+
+- `tokenmeter ingest --source <dir>` (répétable), ou la variable
+  `TOKENMETER_SOURCES` (séparée par `:`). Le répertoire local
+  `~/.claude/projects` est toujours inclus.
+- `<dir>` est typiquement un miroir copie (`tar` sur ssh) de `~/.claude/projects` du VPS.
+  La déduplication par `message.id` évite les doublons ; les projets du VPS
+  se distinguent par leur `cwd`.
+- `scripts/refresh.sh` copie l'historique via ssh si `TOKENMETER_REMOTES="hôte1 hôte2"`
+  est défini (miroirs dans `~/.tokenmeter/mirrors/<hôte>/`).
+
+Limite : si le VPS est injoignable au moment du relevé, l'intervalle est
+biaisé sans que l'outil le sache — marquer `--dirty` dans ce cas.
