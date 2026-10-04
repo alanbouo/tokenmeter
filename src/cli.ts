@@ -226,7 +226,13 @@ function runByProject(): void {
     const result = byProject(db);
 
     if (result.entries.length === 0) {
-      console.log("No events found for the current week window.");
+      if (result.unknownModelEventCount > 0) {
+        console.log(
+          `No priced events for the current week window: ${result.unknownModelEventCount} event(s) used a model with no known price (see src/pricing.ts).`
+        );
+      } else {
+        console.log("No events found for the current week window.");
+      }
       return;
     }
 
