@@ -98,8 +98,12 @@ export interface IngestResult {
 
 // Reads only the bytes appended since the last run (tracked per file in
 // `ingest_state`), so re-running `ingest` on an unchanged history is cheap.
-export function ingest(db: DatabaseSync, rootDir?: string): IngestResult {
-  const files = findJsonlFiles(rootDir);
+//
+// `rootDirs` defaults to the local Claude Code history; pass extra directories
+// (e.g. an rsync mirror of another machine's `~/.claude/projects`) to count
+// usage from several machines against the same account quota.
+export function ingest(db: DatabaseSync, rootDirs: string[] = [CLAUDE_PROJECTS_DIR]): IngestResult {
+  const files = [...new Set(rootDirs.flatMap((dir) => findJsonlFiles(dir)))];
   let eventsInserted = 0;
   let linesSkipped = 0;
 

@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { basename } from "node:path";
+import { homedir } from "node:os";
+import { basename, delimiter, join, resolve } from "node:path";
 import { calibrate } from "./calibration.js";
 import { defaultDbPath, openDb } from "./db.js";
 import { exportCalibrations } from "./export.js";
@@ -10,13 +11,33 @@ import { formatStatusline } from "./statusline.js";
 
 const DEFAULT_MIN_DELTA_PCT = 1;
 
-function runIngest(): void {
+// Extra history directories come from `--source <dir>` (repeatable) and the
+// TOKENMETER_SOURCES env var (path-delimiter separated); the local history is
+// always included.
+function parseSources(args: string[]): string[] {
+  const sources = [join(homedir(), ".claude", "projects")];
+  const fromEnv = process.env.TOKENMETER_SOURCES;
+  if (fromEnv) sources.push(...fromEnv.split(delimiter).filter(Boolean));
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--source") {
+      const value = args[++i];
+      if (!value) throw new Error("--source requires a directory.");
+      sources.push(value);
+    } else {
+      throw new Error(`Unknown option for ingest: ${args[i]}`);
+    }
+  }
+  return sources.map((dir) => resolve(dir.replace(/^~(?=$|\/)/, homedir())));
+}
+
+function runIngest(args: string[]): void {
+  const sources = parseSources(args);
   const dbPath = defaultDbPath();
   const db = openDb(dbPath);
   try {
-    const result = ingest(db);
+    const result = ingest(db, sources);
     const total = db.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number };
-    console.log(`Scanned ${result.filesScanned} file(s).`);
+    console.log(`Scanned ${result.filesScanned} file(s) in ${sources.length} source(s).`);
     console.log(`Inserted ${result.eventsInserted} new event(s).`);
     if (result.linesSkipped > 0) {
       console.log(`Skipped ${result.linesSkipped} unparseable line(s).`);
@@ -303,7 +324,7 @@ function main(): void {
   try {
     switch (command) {
       case "ingest":
-        runIngest();
+        runIngest(args);
         break;
       case "read":
         runRead(args);
@@ -332,7 +353,9 @@ function main(): void {
         console.log("Usage: tokenmeter <command>");
         console.log("");
         console.log("Commands:");
-        console.log("  ingest                       Read local Claude Code session history into the local database");
+        console.log("  ingest [options]             Read Claude Code session history into the local database");
+        console.log("    --source <dir>               Also read this directory (repeatable, e.g. a mirror of a VPS's ~/.claude/projects)");
+        console.log("                                 Also set via TOKENMETER_SOURCES (colon-separated)");
         console.log("  read <weekly-pct> [options]  Record a gauge reading by hand");
         console.log("    --session <pct>              Also record the 5h session percentage");
         console.log("    --dirty                      Flag claude.ai usage since the last reading");
