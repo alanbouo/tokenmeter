@@ -39,6 +39,9 @@ sont des décisions distinctes, pas encore prises (voir
 - [`docs/phase6-publication.md`](docs/phase6-publication.md) — licence,
   commande `export`, ce qui reste un choix de l'utilisateur (visibilité du
   dépôt, publication npm).
+- [`docs/phase7-profils.md`](docs/phase7-profils.md) — plusieurs comptes
+  Claude : profils (`CLAUDE_CONFIG_DIR`), migration du schéma, détection du
+  profil courant.
 
 Ces fichiers font autorité sur le périmètre et l'ordre de travail. Ne pas
 sauter la phase 0 (vérifications sur le format réel des données) avant
@@ -100,6 +103,13 @@ Phases 0 à 6 faites le 2026-09-28 — MVP complet selon `docs/plan-mvp.md`.
   projet, ni modèle, ni tokens bruts). `package.json` garde `"private":
   true` — publier sur npm et rendre le dépôt public restent des décisions
   de l'utilisateur, pas prises ici.
+
+- Phase 7 (hors plan initial, 2026-10-06) — voir `docs/phase7-profils.md`.
+  Support de plusieurs comptes Claude : profils dans
+  `~/.tokenmeter/profiles.json` (`perso` = `~/.claude`, `pro` =
+  `~/.claude-pro`), colonne `profile` sur toutes les tables, données
+  antérieures rattachées à `perso`, `--profile` partout, `sync` par compte via
+  `CLAUDE_CONFIG_DIR`.
 
 Le MVP (phases 0 à 6) est couvert. Ce qui reste, au-delà : accumuler des
 relevés réels sur plusieurs semaines pour une première calibration en

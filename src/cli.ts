@@ -1,21 +1,31 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, delimiter, join, resolve } from "node:path";
+import { basename, delimiter, resolve } from "node:path";
 import { calibrate } from "./calibration.js";
 import { defaultDbPath, openDb } from "./db.js";
 import { exportCalibrations } from "./export.js";
 import { ingest } from "./ingest.js";
 import { byProject, computePace } from "./pace.js";
+import {
+  detectProfile,
+  extractProfileFlag,
+  loadProfiles,
+  normalizeDir,
+  profilesPath,
+  resolveProfile,
+  saveProfiles,
+  type Profile,
+} from "./profiles.js";
 import { insertReading, syncFromCli } from "./readings.js";
 import { formatStatusline } from "./statusline.js";
 
 const DEFAULT_MIN_DELTA_PCT = 1;
 
 // Extra history directories come from `--source <dir>` (repeatable) and the
-// TOKENMETER_SOURCES env var (path-delimiter separated); the local history is
-// always included.
-function parseSources(args: string[]): string[] {
-  const sources = [join(homedir(), ".claude", "projects")];
+// TOKENMETER_SOURCES env var (path-delimiter separated). They are counted
+// against one profile; each profile's own history is always included.
+function parseExtraSources(args: string[]): string[] {
+  const sources: string[] = [];
   const fromEnv = process.env.TOKENMETER_SOURCES;
   if (fromEnv) sources.push(...fromEnv.split(delimiter).filter(Boolean));
   for (let i = 0; i < args.length; i++) {
@@ -30,18 +40,42 @@ function parseSources(args: string[]): string[] {
   return sources.map((dir) => resolve(dir.replace(/^~(?=$|\/)/, homedir())));
 }
 
+// Profile a single-account command applies to (`--profile`, else detected
+// from CLAUDE_CONFIG_DIR). Returns the args with `--profile` removed.
+function selectProfile(args: string[]): { profile: Profile; rest: string[]; multi: boolean } {
+  const { profile: flag, rest } = extractProfileFlag(args);
+  const profiles = loadProfiles();
+  return { profile: resolveProfile(profiles, flag), rest, multi: profiles.length > 1 };
+}
+
+// Profiles a command that can cover several accounts applies to: just the
+// `--profile` one if given, otherwise all of them.
+function selectProfiles(args: string[]): { profiles: Profile[]; flag: string | null; rest: string[]; all: Profile[] } {
+  const { profile: flag, rest } = extractProfileFlag(args);
+  const all = loadProfiles();
+  return { profiles: flag ? [resolveProfile(all, flag)] : all, flag, rest, all };
+}
+
+function tag(profile: Profile, multi: boolean): string {
+  return multi ? `[${profile.name}] ` : "";
+}
+
 function runIngest(args: string[]): void {
-  const sources = parseSources(args);
+  const { profiles, flag, rest, all } = selectProfiles(args);
+  const extras = parseExtraSources(rest);
+  const extraTarget = extras.length > 0 ? resolveProfile(all, flag) : null;
   const dbPath = defaultDbPath();
   const db = openDb(dbPath);
   try {
-    const result = ingest(db, sources);
-    const total = db.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number };
-    console.log(`Scanned ${result.filesScanned} file(s) in ${sources.length} source(s).`);
-    console.log(`Inserted ${result.eventsInserted} new event(s).`);
-    if (result.linesSkipped > 0) {
-      console.log(`Skipped ${result.linesSkipped} unparseable line(s).`);
+    for (const profile of profiles) {
+      const result = ingest(db, profile, profile === extraTarget ? extras : []);
+      console.log(`${tag(profile, all.length > 1)}Scanned ${result.filesScanned} file(s).`);
+      console.log(`${tag(profile, all.length > 1)}Inserted ${result.eventsInserted} new event(s).`);
+      if (result.linesSkipped > 0) {
+        console.log(`${tag(profile, all.length > 1)}Skipped ${result.linesSkipped} unparseable line(s).`);
+      }
     }
+    const total = db.prepare("SELECT COUNT(*) AS n FROM events").get() as { n: number };
     console.log(`Total events in database: ${total.n}.`);
     console.log(`Database: ${dbPath}`);
   } finally {
@@ -57,7 +91,8 @@ function parsePct(raw: string, flagName: string): number {
   return value;
 }
 
-function runRead(args: string[]): void {
+function runRead(rawArgs: string[]): void {
+  const { profile, rest: args } = selectProfile(rawArgs);
   const [weeklyArg, ...rest] = args;
   if (!weeklyArg) {
     throw new Error("Usage: tokenmeter read <weekly-pct> [--session <pct>] [--dirty]");
@@ -82,9 +117,9 @@ function runRead(args: string[]): void {
   const db = openDb();
   try {
     const timestamp = new Date().toISOString();
-    insertReading(db, { timestamp, weeklyPct, sessionPct, dirty, source: "manual" });
+    insertReading(db, profile.name, { timestamp, weeklyPct, sessionPct, dirty, source: "manual" });
     console.log(
-      `Recorded reading: weekly ${weeklyPct}%` +
+      `Recorded reading (${profile.name}): weekly ${weeklyPct}%` +
         (sessionPct !== null ? `, session ${sessionPct}%` : "") +
         (dirty ? " (dirty)" : "") +
         ` at ${timestamp}.`
@@ -94,20 +129,35 @@ function runRead(args: string[]): void {
   }
 }
 
-function runSync(): void {
+function runSync(args: string[]): void {
+  const { profiles, flag, rest, all } = selectProfiles(args);
+  if (rest.length > 0) throw new Error(`Unknown option: ${rest[0]}`);
   const db = openDb();
   try {
-    const result = syncFromCli(db);
-    console.log(
-      `Weekly: ${result.weeklyPct}%` +
-        (result.weeklyResetLabel ? ` (resets ${result.weeklyResetLabel})` : "")
-    );
-    if (result.sessionPct !== null) {
-      console.log(
-        `Session: ${result.sessionPct}%` +
-          (result.sessionResetLabel ? ` (resets ${result.sessionResetLabel})` : "")
-      );
+    const failures: string[] = [];
+    for (const profile of profiles) {
+      const t = tag(profile, all.length > 1);
+      try {
+        const result = syncFromCli(db, profile);
+        console.log(
+          `${t}Weekly: ${result.weeklyPct}%` +
+            (result.weeklyResetLabel ? ` (resets ${result.weeklyResetLabel})` : "")
+        );
+        if (result.sessionPct !== null) {
+          console.log(
+            `${t}Session: ${result.sessionPct}%` +
+              (result.sessionResetLabel ? ` (resets ${result.sessionResetLabel})` : "")
+          );
+        }
+      } catch (error) {
+        // One failing account shouldn't hide the other's reading — unless it's the only one asked for.
+        if (flag || all.length === 1) throw error;
+        failures.push(`${profile.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
+    for (const failure of failures) console.error(`Sync failed for ${failure}`);
+    if (failures.length > 0) process.exitCode = 1;
+    if (failures.length === profiles.length) return;
     console.log(
       "Reading recorded. If you've used claude.ai since your last reading, re-run with: tokenmeter read <pct> --dirty"
     );
@@ -116,7 +166,8 @@ function runSync(): void {
   }
 }
 
-function runCalibrate(args: string[]): void {
+function runCalibrate(rawArgs: string[]): void {
+  const { profile, rest: args, multi } = selectProfile(rawArgs);
   let minDeltaPct = DEFAULT_MIN_DELTA_PCT;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -131,7 +182,7 @@ function runCalibrate(args: string[]): void {
 
   const db = openDb();
   try {
-    const result = calibrate(db, { minDeltaPct });
+    const result = calibrate(db, profile.name, { minDeltaPct });
 
     if (result.estimatedStockUsd === null) {
       console.log(
@@ -166,10 +217,13 @@ function runCalibrate(args: string[]): void {
   }
 }
 
-function runPace(): void {
+function runPace(args: string[]): void {
+  const { profile, rest, multi } = selectProfile(args);
+  if (rest.length > 0) throw new Error(`Unknown option: ${rest[0]}`);
+  if (multi) console.log(`Profile: ${profile.name}`);
   const db = openDb();
   try {
-    const result = computePace(db);
+    const result = computePace(db, profile.name);
 
     if (!result.lastReading) {
       console.log("No reading yet. Run `tokenmeter read <pct>` or `tokenmeter sync` first.");
@@ -220,10 +274,13 @@ function runPace(): void {
   }
 }
 
-function runByProject(): void {
+function runByProject(args: string[]): void {
+  const { profile, rest, multi } = selectProfile(args);
+  if (rest.length > 0) throw new Error(`Unknown option: ${rest[0]}`);
+  if (multi) console.log(`Profile: ${profile.name}`);
   const db = openDb();
   try {
-    const result = byProject(db);
+    const result = byProject(db, profile.name);
 
     if (result.entries.length === 0) {
       if (result.unknownModelEventCount > 0) {
@@ -273,10 +330,17 @@ function readStdin(): string {
   }
 }
 
-function runStatusline(): void {
+function runStatusline(args: string[]): void {
+  const { profile: flag } = extractProfileFlag(args);
+  const profiles = loadProfiles();
+  const profile = flag ? resolveProfile(profiles, flag) : detectProfile(profiles) ?? (profiles.length === 1 ? profiles[0] : null);
+  if (!profile) {
+    console.log("tokenmeter: unknown profile (see `tokenmeter profiles`)");
+    return;
+  }
   const db = openDb();
   try {
-    const pace = computePace(db);
+    const pace = computePace(db, profile.name);
 
     let projectLabel: string | null = null;
     const raw = readStdin().trim();
@@ -290,13 +354,14 @@ function runStatusline(): void {
       }
     }
 
-    console.log(formatStatusline(pace, projectLabel));
+    console.log(formatStatusline(pace, projectLabel, profiles.length > 1 ? profile.name : null));
   } finally {
     db.close();
   }
 }
 
-function runExport(args: string[]): void {
+function runExport(rawArgs: string[]): void {
+  const { profile, rest: args } = selectProfile(rawArgs);
   let outPath: string | null = null;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -311,7 +376,7 @@ function runExport(args: string[]): void {
 
   const db = openDb();
   try {
-    const reports = exportCalibrations(db);
+    const reports = exportCalibrations(db, profile.name);
     const json = JSON.stringify(reports, null, 2);
     if (outPath) {
       writeFileSync(outPath, json + "\n");
@@ -321,6 +386,31 @@ function runExport(args: string[]): void {
     }
   } finally {
     db.close();
+  }
+}
+
+function runProfiles(args: string[]): void {
+  const [sub, ...rest] = args;
+  if (sub === undefined || sub === "list") {
+    const profiles = loadProfiles();
+    const current = detectProfile(profiles);
+    for (const p of profiles) {
+      console.log(`${p === current ? "*" : " "} ${p.name}  ${p.configDir}`);
+      for (const s of p.sources) console.log(`      + ${s}`);
+    }
+    console.log(`(* = profile detected from the current shell; config: ${profilesPath()})`);
+  } else if (sub === "add") {
+    const [name, dir] = rest;
+    if (!name || !dir) throw new Error("Usage: tokenmeter profiles add <name> <config-dir>");
+    // Materialise the implicit profile first so adding one never drops it.
+    const profiles = loadProfiles();
+    if (profiles.some((p) => p.name === name)) throw new Error(`Profile "${name}" already exists.`);
+    const configDir = normalizeDir(dir);
+    if (profiles.some((p) => p.configDir === configDir)) throw new Error(`${configDir} already belongs to another profile.`);
+    saveProfiles([...profiles, { name, configDir, sources: [] }]);
+    console.log(`Added profile "${name}" -> ${configDir}.`);
+  } else {
+    throw new Error(`Unknown profiles subcommand: ${sub}`);
   }
 }
 
@@ -336,31 +426,38 @@ function main(): void {
         runRead(args);
         break;
       case "sync":
-        runSync();
+        runSync(args);
         break;
       case "calibrate":
         runCalibrate(args);
         break;
       case "pace":
-        runPace();
+        runPace(args);
         break;
       case "by-project":
-        runByProject();
+        runByProject(args);
         break;
       case "statusline":
-        runStatusline();
+        runStatusline(args);
         break;
       case "export":
         runExport(args);
+        break;
+      case "profiles":
+        runProfiles(args);
         break;
       default:
         console.log("tokenmeter — local pace tracker for Claude subscription usage");
         console.log("");
         console.log("Usage: tokenmeter <command>");
         console.log("");
+        console.log("Each Claude account is a profile (its CLAUDE_CONFIG_DIR). Commands apply to the profile");
+        console.log("detected from the shell, or to --profile <name>; ingest and sync cover every profile by default.");
+        console.log("");
         console.log("Commands:");
+        console.log("  profiles [add <name> <config-dir>]  List profiles, or add one");
         console.log("  ingest [options]             Read Claude Code session history into the local database");
-        console.log("    --source <dir>               Also read this directory (repeatable, e.g. a mirror of a VPS's ~/.claude/projects)");
+        console.log("    --source <dir>               Also count this directory for the selected profile (repeatable, e.g. a mirror of a VPS's ~/.claude/projects)");
         console.log("                                 Also set via TOKENMETER_SOURCES (colon-separated)");
         console.log("  read <weekly-pct> [options]  Record a gauge reading by hand");
         console.log("    --session <pct>              Also record the 5h session percentage");

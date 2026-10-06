@@ -4,7 +4,7 @@ import type { PaceResult } from "./pace.js";
 // "hebdo 62 % · semaine 55 % · +7 pts · projet tokenmeter"
 // Degrades field by field as pace.ts does — no reading means no line worth
 // showing; no week boundaries means no elapsed/diff segment.
-export function formatStatusline(pace: PaceResult, projectLabel: string | null): string {
+export function formatStatusline(pace: PaceResult, projectLabel: string | null, profileLabel: string | null = null): string {
   if (pace.lastReading === null) {
     return "tokenmeter: no reading yet (tokenmeter sync)";
   }
@@ -23,5 +23,6 @@ export function formatStatusline(pace: PaceResult, projectLabel: string | null):
     parts.push(`projet ${projectLabel}`);
   }
 
-  return parts.join(" · ");
+  const line = parts.join(" · ");
+  return profileLabel ? `[${profileLabel}] ${line}` : line;
 }

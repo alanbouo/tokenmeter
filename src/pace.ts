@@ -32,19 +32,19 @@ interface WeekWindow {
 // The current week's boundaries, from the `resets` table populated by
 // `tokenmeter sync` (phase 2). Both can be null if no weekly reset has been
 // observed yet — callers must degrade gracefully rather than assume a week.
-function getWeekWindow(db: DatabaseSync, nowIso: string): WeekWindow {
+function getWeekWindow(db: DatabaseSync, profile: string, nowIso: string): WeekWindow {
   const last = db
     .prepare(
-      `SELECT reset_at FROM resets WHERE window = 'week' AND reset_at IS NOT NULL AND reset_at <= ?
+      `SELECT reset_at FROM resets WHERE profile = ? AND window = 'week' AND reset_at IS NOT NULL AND reset_at <= ?
        ORDER BY reset_at DESC LIMIT 1`
     )
-    .get(nowIso) as { reset_at: string } | undefined;
+    .get(profile, nowIso) as { reset_at: string } | undefined;
   const next = db
     .prepare(
-      `SELECT reset_at FROM resets WHERE window = 'week' AND reset_at IS NOT NULL AND reset_at > ?
+      `SELECT reset_at FROM resets WHERE profile = ? AND window = 'week' AND reset_at IS NOT NULL AND reset_at > ?
        ORDER BY reset_at ASC LIMIT 1`
     )
-    .get(nowIso) as { reset_at: string } | undefined;
+    .get(profile, nowIso) as { reset_at: string } | undefined;
 
   return { start: last?.reset_at ?? null, end: next?.reset_at ?? null };
 }
@@ -54,30 +54,30 @@ interface ReadingRow {
   weekly_pct: number;
 }
 
-function latestReading(db: DatabaseSync): ReadingRow | null {
+function latestReading(db: DatabaseSync, profile: string): ReadingRow | null {
   const row = db
-    .prepare("SELECT timestamp, weekly_pct FROM readings ORDER BY timestamp DESC LIMIT 1")
-    .get() as ReadingRow | undefined;
+    .prepare("SELECT timestamp, weekly_pct FROM readings WHERE profile = ? ORDER BY timestamp DESC LIMIT 1")
+    .get(profile) as ReadingRow | undefined;
   return row ?? null;
 }
 
-function latestCalibrationStockUsd(db: DatabaseSync): number | null {
+function latestCalibrationStockUsd(db: DatabaseSync, profile: string): number | null {
   const row = db
     .prepare(
-      "SELECT estimated_stock_usd FROM calibrations WHERE estimated_stock_usd IS NOT NULL ORDER BY computed_at DESC LIMIT 1"
+      "SELECT estimated_stock_usd FROM calibrations WHERE profile = ? AND estimated_stock_usd IS NOT NULL ORDER BY computed_at DESC LIMIT 1"
     )
-    .get() as { estimated_stock_usd: number } | undefined;
+    .get(profile) as { estimated_stock_usd: number } | undefined;
   return row?.estimated_stock_usd ?? null;
 }
 
-function sumCost(db: DatabaseSync, fromTsExclusive: string, toTsInclusive: string): { costUsd: number; unknownModelEventCount: number } {
+function sumCost(db: DatabaseSync, profile: string, fromTsExclusive: string, toTsInclusive: string): { costUsd: number; unknownModelEventCount: number } {
   const rows = db
     .prepare(
       `SELECT project, model, input_tokens, output_tokens, cache_read_input_tokens,
               cache_creation_input_tokens, cache_creation_1h_tokens, cache_creation_5m_tokens
-       FROM events WHERE timestamp > ? AND timestamp <= ?`
+       FROM events WHERE profile = ? AND timestamp > ? AND timestamp <= ?`
     )
-    .all(fromTsExclusive, toTsInclusive) as unknown as EventRow[];
+    .all(profile, fromTsExclusive, toTsInclusive) as unknown as EventRow[];
 
   let costUsd = 0;
   let unknownModelEventCount = 0;
@@ -111,17 +111,17 @@ export interface PaceResult {
 // phase 4). The end-of-week projection is a straight-line extrapolation of
 // the rate observed since week start — it assumes constant pace, which is
 // rarely true, hence "at the current rate" in every output message.
-export function computePace(db: DatabaseSync, now: Date = new Date()): PaceResult {
+export function computePace(db: DatabaseSync, profile: string, now: Date = new Date()): PaceResult {
   const nowIso = now.toISOString();
-  const { start, end } = getWeekWindow(db, nowIso);
-  const reading = latestReading(db);
-  const calibrationStockUsd = latestCalibrationStockUsd(db);
+  const { start, end } = getWeekWindow(db, profile, nowIso);
+  const reading = latestReading(db, profile);
+  const calibrationStockUsd = latestCalibrationStockUsd(db, profile);
 
   let estimatedCurrentPct: number | null = reading ? reading.weekly_pct : null;
   let unknownModelEventCount = 0;
 
   if (reading && calibrationStockUsd) {
-    const { costUsd, unknownModelEventCount: unknown } = sumCost(db, reading.timestamp, nowIso);
+    const { costUsd, unknownModelEventCount: unknown } = sumCost(db, profile, reading.timestamp, nowIso);
     unknownModelEventCount = unknown;
     estimatedCurrentPct = reading.weekly_pct + (costUsd / calibrationStockUsd) * 100;
   }
@@ -184,19 +184,19 @@ export interface ByProjectResult {
 // Repartition of the current week's cost by project. Falls back to all
 // ingested history (with a note) when no weekly reset has been observed
 // yet, rather than refusing to answer.
-export function byProject(db: DatabaseSync, now: Date = new Date()): ByProjectResult {
+export function byProject(db: DatabaseSync, profile: string, now: Date = new Date()): ByProjectResult {
   const nowIso = now.toISOString();
-  const { start } = getWeekWindow(db, nowIso);
-  const stockUsd = latestCalibrationStockUsd(db);
+  const { start } = getWeekWindow(db, profile, nowIso);
+  const stockUsd = latestCalibrationStockUsd(db, profile);
   const sinceTs = start ?? "0000-01-01T00:00:00.000Z";
 
   const rows = db
     .prepare(
       `SELECT project, model, input_tokens, output_tokens, cache_read_input_tokens,
               cache_creation_input_tokens, cache_creation_1h_tokens, cache_creation_5m_tokens
-       FROM events WHERE timestamp > ? AND timestamp <= ?`
+       FROM events WHERE profile = ? AND timestamp > ? AND timestamp <= ?`
     )
-    .all(sinceTs, nowIso) as unknown as EventRow[];
+    .all(profile, sinceTs, nowIso) as unknown as EventRow[];
 
   const perProject = new Map<string, number>();
   let unknownModelEventCount = 0;

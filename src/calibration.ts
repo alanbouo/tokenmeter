@@ -61,19 +61,19 @@ function medianAbsoluteDeviation(values: number[], center: number): number {
 // increase / 100). Final estimate is the median across intervals — see
 // docs/plan-mvp.md phase 3 and docs/phase3-calibration.md for the method
 // and its limits.
-export function calibrate(db: DatabaseSync, options: CalibrationOptions): CalibrationResult {
+export function calibrate(db: DatabaseSync, profile: string, options: CalibrationOptions): CalibrationResult {
   const readings = db
-    .prepare("SELECT id, timestamp, weekly_pct, dirty FROM readings ORDER BY timestamp ASC")
-    .all() as unknown as ReadingRow[];
+    .prepare("SELECT id, timestamp, weekly_pct, dirty FROM readings WHERE profile = ? ORDER BY timestamp ASC")
+    .all(profile) as unknown as ReadingRow[];
 
   const weekResets = db
-    .prepare("SELECT reset_at FROM resets WHERE window = 'week' AND reset_at IS NOT NULL ORDER BY reset_at ASC")
-    .all() as unknown as { reset_at: string }[];
+    .prepare("SELECT reset_at FROM resets WHERE profile = ? AND window = 'week' AND reset_at IS NOT NULL ORDER BY reset_at ASC")
+    .all(profile) as unknown as { reset_at: string }[];
 
   const eventStmt = db.prepare(
     `SELECT model, input_tokens, output_tokens, cache_read_input_tokens,
             cache_creation_input_tokens, cache_creation_1h_tokens, cache_creation_5m_tokens
-     FROM events WHERE timestamp > ? AND timestamp <= ?`
+     FROM events WHERE profile = ? AND timestamp > ? AND timestamp <= ?`
   );
 
   const intervals: CalibrationInterval[] = [];
@@ -96,7 +96,7 @@ export function calibrate(db: DatabaseSync, options: CalibrationOptions): Calibr
     const crossesReset = weekResets.some((r) => r.reset_at > prev.timestamp && r.reset_at <= curr.timestamp);
     if (crossesReset) continue;
 
-    const events = eventStmt.all(prev.timestamp, curr.timestamp) as unknown as EventRow[];
+    const events = eventStmt.all(profile, prev.timestamp, curr.timestamp) as unknown as EventRow[];
     let costUsd = 0;
     for (const event of events) {
       const cost = eventCostUsd({
@@ -132,9 +132,9 @@ export function calibrate(db: DatabaseSync, options: CalibrationOptions): Calibr
 
   const computedAt = new Date().toISOString();
   db.prepare(
-    `INSERT INTO calibrations (computed_at, estimated_stock_usd, dispersion_usd, intervals_used)
-     VALUES (?, ?, ?, ?)`
-  ).run(computedAt, estimatedStockUsd, dispersionUsd, intervals.length);
+    `INSERT INTO calibrations (profile, computed_at, estimated_stock_usd, dispersion_usd, intervals_used)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(profile, computedAt, estimatedStockUsd, dispersionUsd, intervals.length);
 
   return {
     computedAt,

@@ -75,7 +75,7 @@ tokenmeter <commande>
 
 | Commande | Rôle |
 |---|---|
-| `ingest` | Lit `~/.claude/projects/**/*.jsonl` (y compris les sous-agents) dans la base locale. Incrémental. |
+| `ingest` | Lit `<configDir>/projects/**/*.jsonl` de chaque profil (y compris les sous-agents) dans la base locale. Incrémental. |
 | `read <pct> [--session <pct>] [--dirty]` | Enregistre un relevé de jauge à la main. |
 | `sync` | Enregistre un relevé automatiquement via `claude -p "/usage"`. |
 | `calibrate [--min-delta <pct>]` | Estime le stock hebdomadaire à partir des relevés et des tokens ingérés. |
@@ -83,6 +83,11 @@ tokenmeter <commande>
 | `by-project` | Répartit le coût équivalent de la semaine en cours par projet. |
 | `statusline` | Ligne compacte pour l'intégration `statusLine` de Claude Code. |
 | `export [--out <fichier>]` | Exporte les rapports de calibration (anonymisés) en JSON. |
+| `profiles [add <nom> <dir>]` | Liste ou ajoute un profil (compte Claude = un `CLAUDE_CONFIG_DIR`). |
+
+Avec plusieurs comptes Claude, chaque commande agit sur le profil détecté via
+`CLAUDE_CONFIG_DIR` ou donné par `--profile <nom>` ; `ingest` et `sync`
+couvrent tous les profils par défaut (voir `docs/phase7-profils.md`).
 
 Chaque commande a sa note de phase associée dans `docs/` (voir
 [À lire avant de coder](CLAUDE.md#à-lire-avant-de-coder) pour le détail des

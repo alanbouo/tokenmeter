@@ -1,11 +1,9 @@
 import { closeSync, fstatSync, openSync, readdirSync, readSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { projectsDirs, type Profile } from "./profiles.js";
 
-const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
-
-export function findJsonlFiles(rootDir: string = CLAUDE_PROJECTS_DIR): string[] {
+export function findJsonlFiles(rootDir: string): string[] {
   const results: string[] = [];
 
   function walk(dir: string): void {
@@ -99,21 +97,22 @@ export interface IngestResult {
 // Reads only the bytes appended since the last run (tracked per file in
 // `ingest_state`), so re-running `ingest` on an unchanged history is cheap.
 //
-// `rootDirs` defaults to the local Claude Code history; pass extra directories
-// (e.g. an rsync mirror of another machine's `~/.claude/projects`) to count
-// usage from several machines against the same account quota.
-export function ingest(db: DatabaseSync, rootDirs: string[] = [CLAUDE_PROJECTS_DIR]): IngestResult {
+// Events are tagged with the profile (Claude account) whose history they come
+// from: its `<configDir>/projects` plus any extra directories (e.g. an rsync
+// mirror of another machine's history) counted against the same account quota.
+export function ingest(db: DatabaseSync, profile: Profile, extraDirs: string[] = []): IngestResult {
+  const rootDirs = [...projectsDirs(profile), ...extraDirs];
   const files = [...new Set(rootDirs.flatMap((dir) => findJsonlFiles(dir)))];
   let eventsInserted = 0;
   let linesSkipped = 0;
 
   const insert = db.prepare(`
     INSERT OR IGNORE INTO events (
-      message_id, timestamp, model, project, session_id, is_sidechain,
+      message_id, profile, timestamp, model, project, session_id, is_sidechain,
       input_tokens, output_tokens,
       cache_creation_input_tokens, cache_read_input_tokens,
       cache_creation_1h_tokens, cache_creation_5m_tokens
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const getState = db.prepare("SELECT bytes_read FROM ingest_state WHERE file_path = ?");
@@ -151,6 +150,7 @@ export function ingest(db: DatabaseSync, rootDirs: string[] = [CLAUDE_PROJECTS_D
       }
       const result = insert.run(
         event.messageId,
+        profile.name,
         event.timestamp,
         event.model,
         event.project,

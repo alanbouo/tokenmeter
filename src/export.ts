@@ -4,7 +4,8 @@ import type { DatabaseSync } from "node:sqlite";
 // `calibrations` table never stores project paths, models, or raw token
 // counts — only the aggregate estimate. Exporting it as-is satisfies
 // plan-mvp.md phase 6 ("export des rapports de calibration, anonymisés")
-// without needing to strip anything.
+// without needing to strip anything. Reports are exported for one profile
+// (account) at a time, and the profile name itself is not part of the output.
 export interface CalibrationReport {
   computedAt: string;
   estimatedStockUsd: number | null;
@@ -19,12 +20,12 @@ interface CalibrationRow {
   intervals_used: number;
 }
 
-export function exportCalibrations(db: DatabaseSync): CalibrationReport[] {
+export function exportCalibrations(db: DatabaseSync, profile: string): CalibrationReport[] {
   const rows = db
     .prepare(
-      "SELECT computed_at, estimated_stock_usd, dispersion_usd, intervals_used FROM calibrations ORDER BY computed_at ASC"
+      "SELECT computed_at, estimated_stock_usd, dispersion_usd, intervals_used FROM calibrations WHERE profile = ? ORDER BY computed_at ASC"
     )
-    .all() as unknown as CalibrationRow[];
+    .all(profile) as unknown as CalibrationRow[];
 
   return rows.map((row) => ({
     computedAt: row.computed_at,

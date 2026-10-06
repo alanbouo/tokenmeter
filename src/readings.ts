@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { DatabaseSync } from "node:sqlite";
+import { defaultConfigDir, type Profile } from "./profiles.js";
 import { parseResetLabel, parseUsageOutput } from "./usage-parser.js";
 
 export interface ReadingInput {
@@ -10,11 +11,12 @@ export interface ReadingInput {
   source: "manual" | "auto";
 }
 
-export function insertReading(db: DatabaseSync, reading: ReadingInput): void {
+export function insertReading(db: DatabaseSync, profile: string, reading: ReadingInput): void {
   db.prepare(
-    `INSERT INTO readings (timestamp, weekly_pct, session_pct, dirty, source)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO readings (profile, timestamp, weekly_pct, session_pct, dirty, source)
+     VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
+    profile,
     reading.timestamp,
     reading.weeklyPct,
     reading.sessionPct,
@@ -28,15 +30,16 @@ export function insertReading(db: DatabaseSync, reading: ReadingInput): void {
 // `sync` call that observes the same still-pending reset.
 export function recordResetIfNew(
   db: DatabaseSync,
+  profile: string,
   window: "week" | "session",
   label: string,
   observedAt: string
 ): void {
   const resetAt = parseResetLabel(label, new Date(observedAt));
   db.prepare(
-    `INSERT OR IGNORE INTO resets (window, reset_label, reset_at, observed_at)
-     VALUES (?, ?, ?, ?)`
-  ).run(window, label, resetAt, observedAt);
+    `INSERT OR IGNORE INTO resets (profile, window, reset_label, reset_at, observed_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(profile, window, label, resetAt, observedAt);
 }
 
 export interface SyncResult {
@@ -49,15 +52,26 @@ export interface SyncResult {
 // Runs `claude -p "/usage"` and stores the result as an automatic reading.
 // `dirty` can't be inferred here — only the person knows whether they used
 // claude.ai since the last reading — so auto readings are never dirty.
-export function syncFromCli(db: DatabaseSync): SyncResult {
-  const output = execFileSync("claude", ["-p", "/usage"], { encoding: "utf8" });
+//
+// The profile's account is selected through CLAUDE_CONFIG_DIR. For the default
+// config dir the variable is left unset: Claude Code keys its stored
+// credentials on whether the variable is set, so setting it to the default
+// path could point at a different (empty) credential entry.
+export function syncFromCli(db: DatabaseSync, profile: Profile): SyncResult {
+  const env = { ...process.env };
+  if (profile.configDir === defaultConfigDir()) {
+    delete env.CLAUDE_CONFIG_DIR;
+  } else {
+    env.CLAUDE_CONFIG_DIR = profile.configDir;
+  }
+  const output = execFileSync("claude", ["-p", "/usage"], { encoding: "utf8", env });
   const parsed = parseUsageOutput(output);
 
   if (parsed.weeklyPct === null) {
     if (/Total cost:/i.test(output)) {
       throw new Error(
         "`claude -p \"/usage\"` returned API-style cost output instead of subscription usage. " +
-          "Claude Code is probably not authenticated with your subscription in this environment " +
+          `Claude Code is probably not authenticated with your subscription for profile "${profile.name}" in this environment ` +
           "(e.g. cron has no keychain access) — run sync from a login session or a launchd agent."
       );
     }
@@ -68,7 +82,7 @@ export function syncFromCli(db: DatabaseSync): SyncResult {
   }
 
   const timestamp = new Date().toISOString();
-  insertReading(db, {
+  insertReading(db, profile.name, {
     timestamp,
     weeklyPct: parsed.weeklyPct,
     sessionPct: parsed.sessionPct,
@@ -76,8 +90,8 @@ export function syncFromCli(db: DatabaseSync): SyncResult {
     source: "auto",
   });
 
-  if (parsed.weeklyResetLabel) recordResetIfNew(db, "week", parsed.weeklyResetLabel, timestamp);
-  if (parsed.sessionResetLabel) recordResetIfNew(db, "session", parsed.sessionResetLabel, timestamp);
+  if (parsed.weeklyResetLabel) recordResetIfNew(db, profile.name, "week", parsed.weeklyResetLabel, timestamp);
+  if (parsed.sessionResetLabel) recordResetIfNew(db, profile.name, "session", parsed.sessionResetLabel, timestamp);
 
   return {
     weeklyPct: parsed.weeklyPct,
