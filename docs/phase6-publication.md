@@ -20,10 +20,9 @@
 
 ## Ce qui reste un choix de l'utilisateur, volontairement pas fait ici
 
-- **Rendre le dépôt public sur GitHub** (ou équivalent) — action distincte
-  de préparer le contenu pour la publication. `CLAUDE.md` dit « le dépôt
-  est privé » jusqu'à cette phase ; passer le dépôt en public change qui
-  peut le voir, ce n'est pas une décision à prendre pour l'utilisateur.
+- **Rendre le dépôt public sur GitHub** — fait par l'utilisateur depuis
+  (le dépôt `alanbouo/tokenmeter` est public au 2026-10-06). Ce n'était pas
+  une décision à prendre à sa place lors de la phase 6.
 - **Publier le paquet sur le registre npm** (`npm publish`) — le
   `package.json` garde `"private": true` par précaution : publier
   officiellement engage un nom de paquet, une politique de versions, et une

@@ -4,10 +4,11 @@ Pilote local d'usage Claude : suivre le rythme de consommation par rapport
 aux fenêtres du forfait, estimer la taille réelle du quota hebdomadaire par
 calibration, et voir pour quels projets on consomme.
 
-MVP terminé (phases 0 à 6 du plan). Licence MIT. Le dépôt reste privé pour
-l'instant — le rendre public sur GitHub (ou équivalent) et publier sur npm
-sont des décisions distinctes, pas encore prises (voir
-`docs/phase6-publication.md`).
+MVP terminé (phases 0 à 6 du plan). Licence MIT. Le dépôt GitHub
+(`alanbouo/tokenmeter`) est public ; publier sur npm reste une décision
+distincte, pas encore prise (voir `docs/phase6-publication.md`). Le dépôt
+étant public : ne jamais committer de données d'usage, d'hôtes ou d'adresses
+personnels (`scripts/` reste ignoré pour cette raison).
 
 ## À lire avant de coder
 
@@ -101,8 +102,8 @@ Phases 0 à 6 faites le 2026-09-28 — MVP complet selon `docs/plan-mvp.md`.
   section Méthodologie. Commande `tokenmeter export [--out <fichier>]` :
   exporte la table `calibrations`, anonyme par construction (ni chemin de
   projet, ni modèle, ni tokens bruts). `package.json` garde `"private":
-  true` — publier sur npm et rendre le dépôt public restent des décisions
-  de l'utilisateur, pas prises ici.
+  true` — publier sur npm reste une décision de l'utilisateur, pas prise ici
+  (le dépôt GitHub, lui, est devenu public).
 
 - Phase 7 (hors plan initial, 2026-10-06) — voir `docs/phase7-profils.md`.
   Support de plusieurs comptes Claude : profils dans
@@ -114,8 +115,8 @@ Phases 0 à 6 faites le 2026-09-28 — MVP complet selon `docs/plan-mvp.md`.
 Le MVP (phases 0 à 6) est couvert. Ce qui reste, au-delà : accumuler des
 relevés réels sur plusieurs semaines pour une première calibration en
 conditions réelles, étape B de la calibration (régression) si l'étape A
-montre un biais, et les deux décisions de publication ci-dessus quand
-l'utilisateur voudra les prendre.
+montre un biais, et la publication npm quand l'utilisateur voudra la
+prendre.
 
 ## Conventions
 
